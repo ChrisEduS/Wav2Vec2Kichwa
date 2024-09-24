@@ -7,7 +7,3 @@ params = {
             'test_trans_ext': '.eaf',
             'batch_size': 32
         }
-master_files = {
-            'audio': [f'{i:02} MASTER K{i}.mp4' for i in range(1, 21)],
-            'elan': [f'Chapter{i}.eaf' for i in range(1, 21)]
-}

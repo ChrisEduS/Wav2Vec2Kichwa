@@ -20,8 +20,8 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
         self.test_dir = os.path.join(self.data_dir, 'test')
 
         # Paths for processed train test directories
-        self.ptrain_dir = os.path.join(self.data_dir, 'train')
-        self.ptest_dir = os.path.join(self.data_dir, 'test')
+        self.ptrain_dir = os.path.join(self.pdata_dir, 'train')
+        self.ptest_dir = os.path.join(self.pdata_dir, 'test')
         
         self.train_dataset = None
         self.val_dataset = None

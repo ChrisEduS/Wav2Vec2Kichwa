@@ -1,4 +1,5 @@
 import os
+import re
 import json
 from moviepy.editor import AudioFileClip
 from pydub import AudioSegment
@@ -108,6 +109,9 @@ class EafManager:
             start_time, end_time, label = annotation
             segment = audio[start_time:end_time]
 
+            # cleaning label
+            label = self.clean_string(label)
+
             # Create directories for each output
             segment_dir = os.path.join(output_dir, seg_file_name + f'_s{idx}')
             os.makedirs(segment_dir, exist_ok=True)
@@ -197,3 +201,10 @@ class EafManager:
             )
         print(f'Segmenting done. Check at {output_dir}. Metadata at {output_json_file}')    
         
+    def clean_string(self, input_string: str) -> str:
+        chars_to_remove_regex = r'[\,\?\.\!\-\;\:\"\“\%\‘\”\�\']'
+        # Convert the string to lowercase
+        cleaned_string = input_string.lower()
+        # Remove unwanted characters using regex
+        cleaned_string = re.sub(chars_to_remove_regex, '', cleaned_string)
+        return cleaned_string

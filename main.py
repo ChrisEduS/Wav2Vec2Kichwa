@@ -23,7 +23,7 @@ def main():
     dataset = test_loader.dataset
 
     print('Cantidad de datos para testear:', len(test_loader.dataset))
-    print('Total de ms para testear:', sum_duration_in_memory(dataset))
+    print(dataset[0]['audio'])
 
 def sum_duration_in_memory(dataset):
     durations = [data['duration'] for data in dataset]

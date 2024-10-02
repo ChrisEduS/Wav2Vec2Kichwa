@@ -47,7 +47,7 @@ class KichwaAudioDataset(Dataset):
         return {
             'audio': audio,                 # Audio tensor loaded
             'transcription': transcription, # transcription text
-            'duration': duration,           # Duration in milliseconds
+            'duration': duration,           # Duration in milliseconds (int)
             'fs': fs,                       # Sample rate (after resampling if needed)
             'eaf_path': eaf_path            # path for eaf file. Maybe not used. 
         }

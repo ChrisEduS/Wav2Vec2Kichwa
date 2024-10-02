@@ -200,11 +200,12 @@ class EafManager:
                 output_json_path=output_json_file
             )
         print(f'Segmenting done. Check at {output_dir}. Metadata at {output_json_file}')    
-        
+
     def clean_string(self, input_string: str) -> str:
-        chars_to_remove_regex = r'[\,\?\.\!\-\;\:\"\“\%\‘\”\�\']'
+        # Add numbers to the regex
+        chars_to_remove_regex = r'[\,\?\.\!\-\;\:\"\“\%\‘\”\�\' \n\[\]0-9]'
         # Convert the string to lowercase
         cleaned_string = input_string.lower()
-        # Remove unwanted characters using regex
+        # Remove unwanted characters and numbers using regex
         cleaned_string = re.sub(chars_to_remove_regex, '', cleaned_string)
         return cleaned_string

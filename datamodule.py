@@ -48,6 +48,7 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
             input_audio_ext='wav',
             output_audio_ext='wav'
         )
+        # FILTERING
         # excluding data based on their duration (ms) look up the function. 
         ptrain_json = os.path.join(self.pdata_dir, 'train.json')
         ftrain_json = os.path.join(self.pdata_dir, 'final_train.json')
@@ -71,11 +72,28 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
             input_audio_ext='wav',
             output_audio_ext='wav'
         )
+
+        # FILTERING 
         # excluding data with duration outside 3000ms and 7000ms
         ptest_json = os.path.join(self.pdata_dir, 'test.json')
         ftest_json = os.path.join(self.pdata_dir, 'final_test.json')
         self.filter_json_by_duration(input_json_path=ptest_json, 
                                     output_json_path=ftest_json)
+        
+        # FINAL STEP --------------------------------------------------
+        # CREATE VOCABULARY
+        train_vocab = 'train_vocab.json'
+        test_vocab = 'test_vocab.json'
+        vocab = 'vocab.json'
+        # train vocab
+        self.create_vocab(ptrain_json, train_vocab)
+        # test vocab
+        self.create_vocab(ptest_json, test_vocab)
+        # merge vocabs
+        self.merge_vocab_files(train_vocab, test_vocab, vocab)
+        # removing train and test vocabs as they won't be used
+        os.remove(train_vocab)
+        os.remove(test_vocab)
 
     def setup(self, stage: str):
         """
@@ -134,6 +152,45 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
 
         print(f"Filtrado completado. Se guardó el archivo filtrado en: {output_json_path}")
 
+    def create_vocab(self, json_file, vocab_file):
+        # Step 1: Load the JSON file
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+        
+        # Step 2: Access 'transcription' column and join all into a single string
+        transcriptions = ''.join(entry['transcription'] for entry in data)
+        
+        # Step 3: Remove spaces and get unique characters
+        characters = sorted(set(transcriptions.replace(' ', '')))
+        
+        # Step 4: Create a dictionary with characters and their respective index
+        vocab_dict = {char: idx for idx, char in enumerate(characters)}
+        
+        # Step 5: Dump the dictionary into vocab_file as a JSON
+        with open(vocab_file, 'w') as f:
+            json.dump(vocab_dict, f, ensure_ascii=False, indent=4)
+
+
+    def merge_vocab_files(self, vocab_file1, vocab_file2, merged_vocab_file):
+        # Step 1: Load both vocabulary files
+        with open(vocab_file1, 'r') as f1, open(vocab_file2, 'r') as f2:
+            vocab1 = json.load(f1)
+            vocab2 = json.load(f2)
+        
+        # Step 2: Combine the keys from both dictionaries
+        combined_characters = sorted(set(vocab1.keys()).union(set(vocab2.keys())))
+        
+        # Step 3: Create a new dictionary with reindexed characters
+        merged_vocab_dict = {char: idx for idx, char in enumerate(combined_characters)}
+        
+        # Step 4: Add special tokens at the end
+        special_tokens = ['|', '[UNK]', '[PAD]']
+        for token in special_tokens:
+            merged_vocab_dict[token] = len(merged_vocab_dict)
+        
+        # Step 5: Write the merged vocabulary dictionary to the merged_vocab_file
+        with open(merged_vocab_file, 'w') as f_out:
+            json.dump(merged_vocab_dict, f_out, ensure_ascii=False, indent=4)
 
 
 def collate_fn(batch):

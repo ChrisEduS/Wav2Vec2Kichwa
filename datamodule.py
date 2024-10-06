@@ -4,15 +4,19 @@ import json
 import lightning as L
 from eaf_manager import EafManager
 from torch.utils.data import random_split, DataLoader
-from dataset import KichwaAudioDataset  # Ensure this is the correct path
+from dataset import KichwaAudioDataset 
 
 class DataModule_KichwaWav2vec2(L.LightningDataModule):
     
-    def __init__(self, data_dir: str, processed_data_dir: str, batch_size: int):
+    def __init__(self, data_dir: str, processed_data_dir: str, freq_sample: int, batch_size: int):
         super().__init__()
+        # data directories
         self.data_dir = data_dir
         self.pdata_dir = processed_data_dir
+        # configs
+        self.freq_sample = freq_sample
         self.batch_size = batch_size
+        # eaf manager
         self.eaf_manager = EafManager()
         
         # Paths for train test directories
@@ -106,7 +110,7 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
 
         if stage == 'fit' or stage is None:
             # Load full training dataset from the preprocessed data JSON file
-            full_dataset = KichwaAudioDataset(json_file=final_train_json)
+            full_dataset = KichwaAudioDataset(json_file=final_train_json, freq_sample=self.freq_sample)
 
             # Split into train and validation datasets (80% train, 20% validation)
             train_size = int(0.8 * len(full_dataset))
@@ -115,11 +119,11 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
 
         if stage == 'test' or stage is None:
             # Load test dataset
-            self.test_dataset = KichwaAudioDataset(json_file=final_test_json)
+            self.test_dataset = KichwaAudioDataset(json_file=final_test_json, freq_sample=self.freq_sample)
         
         if stage == 'predict' or stage is None:
             # The same dataset can be used for predictions if necessary
-            self.predict_dataset = KichwaAudioDataset(json_file=final_test_json)
+            self.predict_dataset = KichwaAudioDataset(json_file=final_test_json, freq_sample=self.freq_sample)
 
     def train_dataloader(self):
         """Return DataLoader for the training set."""

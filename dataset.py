@@ -4,11 +4,12 @@ import torchaudio
 from torch.utils.data import Dataset
 
 class KichwaAudioDataset(Dataset):
-    def __init__(self, json_file):
+    def __init__(self, json_file: str, freq_sample: int):
         """
         Args:
             json_file (str): Path to the JSON file containing the dataset.
         """
+        self.model_sample_rate = freq_sample
         with open(json_file, 'r') as f:
             self.data = json.load(f)
 
@@ -34,20 +35,19 @@ class KichwaAudioDataset(Dataset):
         duration = sample['duration_ms']
         fs = sample['fs']
         eaf_path = sample['eaf_path']
-
-
+        
         # Load the audio file using torchaudio
         audio, sample_rate = torchaudio.load(audio_path)
 
-        # If the sample rate in the JSON does not match the actual sample rate, resample
-        if sample_rate != fs:
-            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=fs)
-            audio = resampler(audio)
+        # Resampling to the fs used for pretrained model. wav2vec2 this case
+        
+        audio = torchaudio.transforms.Resample(sample_rate, self.model_sample_rate)(audio)
+        
         
         return {
             'audio': audio,                 # Audio tensor loaded
             'transcription': transcription, # transcription text
             'duration': duration,           # Duration in milliseconds (int)
-            'fs': fs,                       # Sample rate (after resampling if needed)
+            'fs': self.model_sample_rate,   # Sample rate. Wav2Vec2 model trained with 16000 frequency rate
             'eaf_path': eaf_path            # path for eaf file. Maybe not used. 
         }

@@ -1,89 +1,119 @@
-import os
-import json
-from moviepy.editor import AudioFileClip
-import pympi
-import warnings
-warnings.simplefilter("ignore")
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import pytorch_lightning as pl
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from jiwer import wer
+from torch.utils.data import DataLoader
 
-def extract_metadata(data_dir, transcription_ext, audio_ext, json_path, is_master=True):
-    '''
-        Extract metadata of data_dir. The function recursively explores directories
-        until it finds two files (.eaf, .audio_ext) in the same directory.
-        When is_master is False, it extracts the transcription from the "default" tier in the .eaf file,
-        assuming there is only one annotation.
-    '''
-    result = []
+class KichwaAudioDataset(torch.utils.data.Dataset):
+    def __init__(self, data):
+        self.data = data
 
-    def explore_directory(current_dir):
-        eaf_file = None
-        audio_file = None
+    def __len__(self):
+        return len(self.data)
 
-        # Recorremos todos los archivos y directorios dentro del directorio actual
-        for entry in os.listdir(current_dir):
-            full_path = os.path.join(current_dir, entry)
-
-            # Si es un directorio, entramos recursivamente
-            if os.path.isdir(full_path):
-                explore_directory(full_path)
-
-            # Si es un archivo, verificamos su extensión
-            elif os.path.isfile(full_path):
-                if entry.endswith(transcription_ext):
-                    eaf_file = full_path
-                elif entry.endswith(audio_ext):
-                    audio_file = full_path
-
-            # Si encontramos ambos archivos, los registramos
-            if eaf_file and audio_file:
-                # Usamos moviepy para conseguir la metadata del audio
-                audio_clip = AudioFileClip(audio_file)
-                duration_ms = int(audio_clip.duration * 1000)  # Duración en milisegundos
-                frequency_sampling = audio_clip.fps  # Frecuencia de muestreo
-
-                # Registro base de datos
-                record = {
-                    'eaf_path': eaf_file,
-                    'audio_path': audio_file,
-                    'duration_ms': duration_ms,
-                    'FS': frequency_sampling
-                }
-
-                # Si is_master es False, extraemos la transcripción del tier "default"
-                if not is_master:
-                    eaf_obj = pympi.Elan.Eaf(eaf_file)
-                    
-                    # Asumimos que solo hay una anotación en el tier "default"
-                    transcription = eaf_obj.get_annotation_data_for_tier("default")[0][2] if "default" in eaf_obj.get_tier_names() else "No default tier found"
-                    
-                    # Añadimos la transcripción al registro
-                    record['transcription'] = transcription
-
-                # Añadimos el registro a la lista de resultados
-                result.append(record)
-
-                # Reseteamos las variables para buscar nuevos pares
-                eaf_file = None
-                audio_file = None
-
-    # Comienza la búsqueda recursiva
-    explore_directory(data_dir)
-
-    # Guardamos el resultado en un archivo JSON
-    with open(json_path, 'w') as f:
-        json.dump(result, f, indent=4)
+    def __getitem__(self, idx):
+        return self.data[idx]
 
 
+class Wav2Vec2FineTuning(pl.LightningModule):
+    def __init__(self, lr: float, dataset, processor_name: str, batch_size: int):
+        super(Wav2Vec2FineTuning, self).__init__()
+        self.lr = lr
+        self.batch_size = batch_size
+        self.processor = Wav2Vec2Processor.from_pretrained(processor_name)
+        self.model = Wav2Vec2ForCTC.from_pretrained(processor_name)
+        self.dataset = dataset
 
-extract_metadata(
-    data_dir='/root/Wav2Vec2Kichwa/segmented_data/train',
-    json_path='/root/Wav2Vec2Kichwa/segmented_data/train.json',
-    audio_ext='wav',
-    transcription_ext='eaf',
-    is_master=False
-)
+    def forward(self, inputs, input_lengths):
+        outputs = self.model(input_values=inputs, attention_mask=input_lengths).logits
+        return outputs
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        return optimizer
+
+    def training_step(self, batch, batch_idx):
+        audio = batch['audio']
+        transcriptions = batch['transcription']
+
+        # Preprocess audio and transcriptions
+        inputs = self.processor(audio, sampling_rate=batch['fs'][0], return_tensors="pt", padding=True)
+        input_values = inputs.input_values.squeeze(1).to(self.device)
+        attention_mask = inputs.attention_mask.to(self.device)
+
+        # Encode transcriptions to target labels
+        with self.processor.as_target_processor():
+            targets = self.processor(transcriptions, return_tensors="pt", padding=True).input_ids
+
+        # Forward pass through the model
+        logits = self.forward(input_values, attention_mask)
+
+        # Compute loss (CTC loss)
+        loss = F.ctc_loss(
+            logits.transpose(0, 1),  # (T, N, C) format required for CTC
+            targets,
+            input_lengths=attention_mask.sum(-1),  # Mask for variable-length inputs
+            target_lengths=torch.tensor([len(t) for t in targets], device=self.device),
+            blank=self.processor.tokenizer.pad_token_id,
+            zero_infinity=True,
+        )
+
+        self.log("train_loss", loss, on_epoch=True, batch_size=self.batch_size)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        audio = batch['audio']
+        transcriptions = batch['transcription']
+
+        # Preprocess audio
+        inputs = self.processor(audio, sampling_rate=batch['fs'][0], return_tensors="pt", padding=True)
+        input_values = inputs.input_values.squeeze(1).to(self.device)
+        attention_mask = inputs.attention_mask.to(self.device)
+
+        # Forward pass
+        logits = self.forward(input_values, attention_mask)
+        pred_ids = torch.argmax(logits, dim=-1)
+
+        # Decode predictions and compute WER
+        pred_transcriptions = self.processor.batch_decode(pred_ids)
+        avg_wer = wer(transcriptions, pred_transcriptions)
+
+        self.log("val_wer", avg_wer, on_epoch=True, batch_size=self.batch_size)
+        return {"val_wer": avg_wer}
+
+    def train_dataloader(self):
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
+
+    def val_dataloader(self):
+        return DataLoader(self.dataset, batch_size=self.batch_size)
 
 
-# with open('/root/Wav2Vec2Kichwa/segmented_data/train.json', 'r') as f:
-#     data = json.load(f)
+# Example of how to use the KichwaAudioDataset and Wav2Vec2FineTuning class
+if __name__ == "__main__":
+    # Example dataset (replace with actual loading)
+    dataset = KichwaAudioDataset([
+        {
+            'audio': torch.randn(1, 16000),  # Example 1-second audio tensor
+            'transcription': "example transcription",
+            'duration': 1000,
+            'fs': 16000,
+            'eaf_path': 'path/to/eaf',
+        },
+        # Add more data samples
+    ])
 
-# print(data[0])
+    # Define the model
+    model = Wav2Vec2FineTuning(
+        lr=3e-5,
+        dataset=dataset,
+        processor_name="facebook/wav2vec2-large-960h",
+        batch_size=4
+    )
+
+    # Define a trainer
+    trainer = pl.Trainer(max_epochs=3)
+
+    # Train the model
+    trainer.fit(model)

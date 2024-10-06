@@ -1,16 +1,23 @@
 import torch
 import utils
-from datamodule import DataModule_KichwaWav2vec2  # Asegúrate de que el nombre y la ruta del archivo son correctos
+from datamodule import DataModule_KichwaWav2vec2 
 
 def main():
     # Configuraciones básicas
-    params = utils.params
-    data_dir = params['data_dir']
-    processed_data_dir = params['processed_data_dir']
-    batch_size = 8  # Define el tamaño de lote que desees
+    dirs = utils.dirs
+    configs = utils.configs
+
+    data_dir = dirs['data_dir']
+    processed_data_dir = dirs['processed_data_dir']
+
+    freq_sample = configs['fs']
+    batch_size = configs['batch_size']  # Define el tamaño de lote que desees
 
     # Crear una instancia del DataModule
-    data_module = DataModule_KichwaWav2vec2(data_dir, processed_data_dir, batch_size)
+    data_module = DataModule_KichwaWav2vec2(data_dir=data_dir,
+                                            processed_data_dir=processed_data_dir,
+                                            freq_sample=freq_sample,
+                                            batch_size=batch_size)
     
     # Preparar los datos (solo si no has procesado los datos antes)
     data_module.prepare_data()
@@ -22,8 +29,9 @@ def main():
     test_loader = data_module.test_dataloader()
     dataset = test_loader.dataset
 
+    print(dataset[0]['audio'], dataset[0]['audio'].shape) #dataset[0]['fs']
     print('Cantidad de datos para testear:', len(test_loader.dataset))
-    print(dataset[0]['audio'])
+
 
 def sum_duration_in_memory(dataset):
     durations = [data['duration'] for data in dataset]

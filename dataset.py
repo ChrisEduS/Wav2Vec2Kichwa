@@ -42,6 +42,11 @@ class KichwaAudioDataset(Dataset):
         # Resampling to the fs used for pretrained model. wav2vec2 this case
         
         audio = torchaudio.transforms.Resample(sample_rate, self.model_sample_rate)(audio)
+        # downmix stereo to mono if needed 
+        if audio.shape[0] == 2:
+            audio = torch.mean(audio, dim=0)
+        # deleting singleton dimension
+        audio = audio.squeeze(0)
         
         
         return {
@@ -51,3 +56,9 @@ class KichwaAudioDataset(Dataset):
             'fs': self.model_sample_rate,   # Sample rate. Wav2Vec2 model trained with 16000 frequency rate
             'eaf_path': eaf_path            # path for eaf file. Maybe not used. 
         }
+
+def downmix_to_mono(audio):
+    # Assuming audio has shape [batch_size, 2, audio_length] (stereo)
+    if audio.shape[1] == 2:
+        audio = torch.mean(audio, dim=1)  # Downmix to mono by averaging across the channel dimension
+    return audio

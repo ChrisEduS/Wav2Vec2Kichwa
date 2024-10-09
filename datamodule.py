@@ -202,13 +202,13 @@ def collate_fn(batch):
     Collate function to pad audio tensors to the same length.
     """
     # Obtener la longitud máxima del audio en el lote
-    max_audio_len = max([sample['audio'].size(1) for sample in batch])
+    max_audio_len = max([sample['audio'].size(0) for sample in batch])
     
     # Crear tensores rellenos y organizar los datos
     audio_tensors = []
     for sample in batch:
         audio = sample['audio']
-        pad_size = max_audio_len - audio.size(1)
+        pad_size = max_audio_len - audio.size(0)
         padded_audio = torch.nn.functional.pad(audio, (0, pad_size))
         audio_tensors.append(padded_audio)
     

@@ -8,105 +8,85 @@ class Wav2Vec2FineTuner(L.LightningModule):
         super().__init__()
         self.fs = fs
         self.lr = learning_rate
+
         self.tokenizer = Wav2Vec2CTCTokenizer(vocab_file, unk_token='[UNK]', pad_token='[PAD]', word_delimiter_token='|')
         self.feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0, do_normalize=True, return_attention_mask=True)
         self.processor = Wav2Vec2Processor(self.feature_extractor, self.tokenizer)
-        self.model = Wav2Vec2ForCTC.from_pretrained(model_name)
+        self.model = Wav2Vec2ForCTC.from_pretrained(model_name,
+                                     vocab_size=len(self.processor.tokenizer),
+                                     ctc_loss_reduction="mean",
+                                     pad_token_id=self.processor.tokenizer.pad_token_id,
+                                     bos_token_id=self.processor.tokenizer.bos_token_id,
+                                     eos_token_id=self.processor.tokenizer.eos_token_id
+                                     )
+        self.model.freeze_feature_extractor()
+
+        # check model configs
+        # print(self.model.config)
+
+        self.log_args = {
+            'on_step': True,
+            'on_epoch': True,
+            'logger': True,
+            'prog_bar': True
+        }
     
-    def forward(self, inputs, attention_mask):
-        outputs = self.model(input_values=inputs, attention_mask=attention_mask).logits
+    def forward(self, inputs, attention_mask, targets):
+        outputs = self.model(input_values=inputs, attention_mask=attention_mask, labels=targets)
         return outputs
+
+    def _shared_step(self, batch):
+        transcriptions = batch['transcription']
+        input_values = batch['input_values']
+        attention_mask = batch['attention_mask']
+        targets = batch['labels']
+
+        # Forward pass
+        outputs = self.forward(input_values, attention_mask, targets)
+        logits = outputs.logits
+        loss = outputs.loss
+
+        # # Use model.config.inputs_to_logits_ratio to calculate input_lengths
+        # downsampling_factor = self.model.config.inputs_to_logits_ratio
+        # input_lengths = torch.clamp(attention_mask.sum(-1) // downsampling_factor, max=logits.size(1)).long().to(self.device)
+        # # Target lengths
+        # target_lengths = torch.tensor([len(t) for t in targets], device=self.device)
+
+        # # Compute CTC loss
+        # loss = torch.nn.functional.ctc_loss(
+        #     logits.transpose(0, 1),  # (T, N, C) format required for CTC
+        #     targets,
+        #     input_lengths=input_lengths,
+        #     target_lengths=target_lengths,
+        #     blank=self.processor.tokenizer.pad_token_id,
+        #     zero_infinity=True,
+        # )
+
+        # Decode predictions and compute metrics
+        pred_ids = torch.argmax(logits, dim=-1)
+        pred_transcriptions = self.processor.batch_decode(pred_ids)
+
+        # print(pred_transcriptions, transcriptions)
+
+        avg_wer = wer(transcriptions, pred_transcriptions)
+        avg_cer = cer(transcriptions, pred_transcriptions)
+
+        return loss, avg_wer, avg_cer
 
     
     def training_step(self, batch, batch_idx):
-        audio = batch['audio']
-        transcriptions = batch['transcription']
-
-        # Preprocess audio and transcriptions
-        inputs = self.processor(audio, sampling_rate=self.fs, return_tensors="pt", padding=True)
-        input_values = inputs.input_values[0].to(self.device)
-        attention_mask = inputs.attention_mask.to(self.device)
-
-        # print(input_values.shape)
-        print(attention_mask)
-        # Encode transcriptions to target labels
-        with self.processor.as_target_processor():
-            targets = self.processor(transcriptions, return_tensors="pt", padding=True).input_ids
-
-        # Forward pass through the model
-        logits = self.forward(input_values, attention_mask)
-
-        # Compute loss (CTC loss)
-        loss = torch.nn.functional.ctc_loss(
-            logits.transpose(0, 1),  # (T, N, C) format required for CTC
-            targets,
-            input_lengths=attention_mask.sum(-1),  # Mask for variable-length inputs
-            target_lengths=torch.tensor([len(t) for t in targets], device=self.device),
-            blank=self.processor.tokenizer.pad_token_id,
-            zero_infinity=True,
-        )
-
-        # Decode predictions
-        pred_ids = torch.argmax(logits, dim=-1)
-        pred_transcriptions = self.processor.batch_decode(pred_ids)
-
-        # Compute WER and CER
-        avg_wer = wer(transcriptions, pred_transcriptions)
-        avg_cer = cer(transcriptions, pred_transcriptions)
-
-        # Log loss, WER, and CER
-        self.log("train_loss", loss, on_epoch=True, batch_size=self.batch_size)
-        self.log("train_wer", avg_wer, on_epoch=True, batch_size=self.batch_size)
-        self.log("train_cer", avg_cer, on_epoch=True, batch_size=self.batch_size)
-
+        loss, avg_wer, avg_cer = self._shared_step(batch)
+        self.log("train_loss", loss, **self.log_args)
+        self.log("train_wer", avg_wer, **self.log_args)
+        self.log("train_cer", avg_cer, **self.log_args)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        audio = batch['audio']
-        transcriptions = batch['transcription']
-
-        print(audio.shape)
-
-        # Preprocess audio
-        inputs = self.processor(audio, sampling_rate=self.fs, return_tensors="pt", padding=True)
-        input_values = inputs.input_values[0].to(self.device)
-        attention_mask = inputs.attention_mask.to(self.device)
-
-        print(input_values.shape)
-        print(attention_mask.shape)
-        print(attention_mask)
-        
-        # Encode transcriptions to target labels
-        with self.processor.as_target_processor():
-            targets = self.processor(transcriptions, return_tensors="pt", padding=True).input_ids
-
-        # Forward pass
-        logits = self.forward(input_values, attention_mask)
-
-        #Compute CTC loss
-        val_loss = torch.nn.functional.ctc_loss(
-            logits.transpose(0, 1),  # (T, N, C) format required for CTC
-            targets,
-            input_lengths=attention_mask.sum(-1),  # Mask for variable-length inputs
-            target_lengths=torch.tensor([len(t) for t in targets], device=self.device),
-            blank=self.processor.tokenizer.pad_token_id,
-            zero_infinity=True,
-        )
-
-       # Decode predictions
-        pred_ids = torch.argmax(logits, dim=-1)
-        pred_transcriptions = self.processor.batch_decode(pred_ids)
-
-        # Compute WER and CER
-        avg_wer = wer(transcriptions, pred_transcriptions)
-        avg_cer = cer(transcriptions, pred_transcriptions)
-
-        # Log validation loss, WER, and CER
-        self.log("val_loss", val_loss, on_epoch=True, batch_size=self.batch_size)
-        self.log("val_wer", avg_wer, on_epoch=True, batch_size=self.batch_size)
-        self.log("val_cer", avg_cer, on_epoch=True, batch_size=self.batch_size)
-
-        return {"val_loss": val_loss, "val_wer": avg_wer, "val_cer": avg_cer}
+        loss, avg_wer, avg_cer = self._shared_step(batch)
+        self.log("val_loss", loss, **self.log_args)
+        self.log("val_wer", avg_wer, **self.log_args)
+        self.log("val_cer", avg_cer, **self.log_args)
+        return loss
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)

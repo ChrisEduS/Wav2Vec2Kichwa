@@ -4,11 +4,13 @@ import torchaudio
 from torch.utils.data import Dataset
 
 class KichwaAudioDataset(Dataset):
-    def __init__(self, json_file: str, freq_sample: int):
+    def __init__(self, json_file: str, vocab: str, freq_sample: int):
         """
         Args:
             json_file (str): Path to the JSON file containing the dataset.
+            vocab (str): Path to the JSON file containing the general vocabulary
         """
+        self.vocab = vocab
         self.model_sample_rate = freq_sample
         with open(json_file, 'r') as f:
             self.data = json.load(f)
@@ -47,9 +49,16 @@ class KichwaAudioDataset(Dataset):
             audio = torch.mean(audio, dim=0)
         # deleting singleton dimension
         audio = audio.squeeze(0)
+
+        # considering that this is for individual samples, so all this is provisional
+        temp_attention_mask = torch.ones_like(audio) # attention mask filled ones as all features are important
+        labels = mtokiner(vocab=self.vocab, transcription=transcription) # torch tensor of labels
         
         
         return {
+            'input_values': audio,          # not normalized/featured values
+            'attention_mask': temp_attention_mask, 
+            'labels': labels,
             'audio': audio,                 # Audio tensor loaded
             'transcription': transcription, # transcription text
             'duration': duration,           # Duration in milliseconds (int)
@@ -62,3 +71,15 @@ def downmix_to_mono(audio):
     if audio.shape[1] == 2:
         audio = torch.mean(audio, dim=1)  # Downmix to mono by averaging across the channel dimension
     return audio
+
+def mtokiner(vocab, transcription: str):
+    # Load the JSON file to create the mapping dictionary
+    with open(vocab, 'r') as f:
+        char_to_idx = json.load(f)
+    
+    # Convert each character in the transcription to its corresponding value in the dictionary
+    # Spaces ' ' are replaced by the '|' token from the dictionary
+    indices = [char_to_idx[char] if char != ' ' else char_to_idx['|'] for char in transcription]
+
+    # Convert the list of indices to a tensor
+    return torch.tensor(indices, dtype=torch.long)

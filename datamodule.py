@@ -5,14 +5,16 @@ import lightning as L
 from eaf_manager import EafManager
 from torch.utils.data import random_split, DataLoader
 from dataset import KichwaAudioDataset 
+from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec2Processor
 
 class DataModule_KichwaWav2vec2(L.LightningDataModule):
     
-    def __init__(self, data_dir: str, processed_data_dir: str, freq_sample: int, batch_size: int):
+    def __init__(self, data_dir: str, processed_data_dir: str, vocab: str, freq_sample: int, batch_size: int):
         super().__init__()
         # data directories
         self.data_dir = data_dir
         self.pdata_dir = processed_data_dir
+        self.vocab = vocab
         # configs
         self.freq_sample = freq_sample
         self.batch_size = batch_size
@@ -88,13 +90,13 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
         # CREATE VOCABULARY
         train_vocab = 'train_vocab.json'
         test_vocab = 'test_vocab.json'
-        vocab = 'vocab.json'
+
         # train vocab
         self.create_vocab(ptrain_json, train_vocab)
         # test vocab
         self.create_vocab(ptest_json, test_vocab)
         # merge vocabs
-        self.merge_vocab_files(train_vocab, test_vocab, vocab)
+        self.merge_vocab_files(train_vocab, test_vocab, self.vocab)
         # removing train and test vocabs as they won't be used
         os.remove(train_vocab)
         os.remove(test_vocab)
@@ -110,7 +112,7 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
 
         if stage == 'fit' or stage is None:
             # Load full training dataset from the preprocessed data JSON file
-            full_dataset = KichwaAudioDataset(json_file=final_train_json, freq_sample=self.freq_sample)
+            full_dataset = KichwaAudioDataset(json_file=final_train_json, vocab=self.vocab, freq_sample=self.freq_sample)
 
             # Split into train and validation datasets (80% train, 20% validation)
             train_size = int(0.8 * len(full_dataset))
@@ -119,11 +121,11 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
 
         if stage == 'test' or stage is None:
             # Load test dataset
-            self.test_dataset = KichwaAudioDataset(json_file=final_test_json, freq_sample=self.freq_sample)
+            self.test_dataset = KichwaAudioDataset(json_file=final_test_json, vocab=self.vocab, freq_sample=self.freq_sample)
         
         if stage == 'predict' or stage is None:
             # The same dataset can be used for predictions if necessary
-            self.predict_dataset = KichwaAudioDataset(json_file=final_test_json, freq_sample=self.freq_sample)
+            self.predict_dataset = KichwaAudioDataset(json_file=final_test_json, vocab=self.vocab, freq_sample=self.freq_sample)
 
     def train_dataloader(self):
         """Return DataLoader for the training set."""
@@ -141,7 +143,7 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
         """Return DataLoader for the predict set."""
         return DataLoader(self.predict_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn)
 
-    def filter_json_by_duration(self, input_json_path, output_json_path, min_duration=1500, max_duration=9000):
+    def filter_json_by_duration(self, input_json_path, output_json_path, min_duration=1500, max_duration=6000):
         print('Filtrando datos por duracion (ms)')
         # Cargar el JSON desde el archivo
         with open(input_json_path, 'r') as infile:
@@ -174,7 +176,6 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
         with open(vocab_file, 'w') as f:
             json.dump(vocab_dict, f, ensure_ascii=False, indent=4)
 
-
     def merge_vocab_files(self, vocab_file1, vocab_file2, merged_vocab_file):
         # Step 1: Load both vocabulary files
         with open(vocab_file1, 'r') as f1, open(vocab_file2, 'r') as f2:
@@ -188,7 +189,7 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
         merged_vocab_dict = {char: idx for idx, char in enumerate(combined_characters)}
         
         # Step 4: Add special tokens at the end
-        special_tokens = ['|', '[UNK]', '[PAD]']
+        special_tokens = ['', '|', '[UNK]','[PAD]']
         for token in special_tokens:
             merged_vocab_dict[token] = len(merged_vocab_dict)
         
@@ -198,33 +199,43 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
 
 
 def collate_fn(batch):
-    """
-    Collate function to pad audio tensors to the same length.
-    """
-    # Obtener la longitud máxima del audio en el lote
-    max_audio_len = max([sample['audio'].size(0) for sample in batch])
+    vocab_file = 'vocab.json'
+    tokenizer = Wav2Vec2CTCTokenizer(vocab_file, unk_token='[UNK]', pad_token='[PAD]', word_delimiter_token='|')
+    feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0, do_normalize=True, return_attention_mask=True)
+    processor = Wav2Vec2Processor(feature_extractor, tokenizer)
+
+    # Extract audio data
+    audio = [sample['audio'].squeeze(0).numpy() for sample in batch]  # Convert from tensors to numpy arrays
     
-    # Crear tensores rellenos y organizar los datos
-    audio_tensors = []
-    for sample in batch:
-        audio = sample['audio']
-        pad_size = max_audio_len - audio.size(0)
-        padded_audio = torch.nn.functional.pad(audio, (0, pad_size))
-        audio_tensors.append(padded_audio)
+    # Extract transcription data
+    transcription = [sample['transcription'] for sample in batch]
+
+    # Ensure processor correctly pads audios with padding=True
+    inputs = processor(audio, sampling_rate=16000, return_tensors='pt', padding=True)
     
-    # Concatenar los audios en un solo tensor
-    audios = torch.stack(audio_tensors)
-    
-    # Organizar las demás entradas del batch
-    transcriptions = [sample['transcription'] for sample in batch]
+    # Obtain input_values and attention_mask
+    input_values = inputs.input_values
+    attention_mask = inputs.attention_mask
+
+    # Process transcriptions with padding
+    with processor.as_target_processor():
+        labels = processor(transcription, return_tensors='pt', padding=True).input_ids
+
+    # Replace pad token ids with -100 to ignore padding when calculating loss
+    labels = labels.masked_fill(labels == processor.tokenizer.pad_token_id, -100)
+
+    # Keep additional data
     eaf_paths = [sample['eaf_path'] for sample in batch]
     durations = [sample['duration'] for sample in batch]
     fs = [sample['fs'] for sample in batch]
 
     return {
-        'audio': audios,
-        'transcription': transcriptions,
-        'eaf_path': eaf_paths,
-        'duration': durations,
-        'fs': fs
+        'input_values': input_values,       # Processed audios
+        'attention_mask': attention_mask,   # Attention mask
+        'labels': labels,                   # Processed transcriptions
+        'audio': audio,                     # Original audios
+        'transcription': transcription,     # Original transcriptions
+        'eaf_path': eaf_paths,              # Additional paths
+        'duration': durations,              # Audio durations
+        'fs': fs                            # Sampling rates
     }

@@ -5,6 +5,7 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 from datamodule import DataModule_KichwaWav2vec2 
 from torchmodule import Wav2Vec2FineTuner
+from transformers import Wav2Vec2Config
 
 def main():
     # Configuraciones básicas
@@ -13,6 +14,7 @@ def main():
 
     data_dir = dirs['data_dir']
     processed_data_dir = dirs['processed_data_dir']
+    vocab = dirs['vocab']
     checkpoints_dir = dirs['checkpoints']
 
     freq_sample = configs['fs']
@@ -22,21 +24,22 @@ def main():
     # Instantiate and prepare data module
     datamodule = DataModule_KichwaWav2vec2(data_dir=data_dir,
                                             processed_data_dir=processed_data_dir,
+                                            vocab = vocab,
                                             freq_sample=freq_sample,
                                             batch_size=batch_size)
 
-    #     # Preparar los datos (solo si no has procesado los datos antes)
+    #    # Preparar los datos (solo si no has procesado los datos antes)
     # datamodule.prepare_data()
     
     # # Configurar el DataModule para el entrenamiento
     # datamodule.setup(stage='fit')
 
     # # Obtener el train_dataloader
-    # test_loader = datamodule.train_dataloader()
-    # dataset = test_loader.dataset
+    # train_loader = datamodule.train_dataloader()
+    # dataset = train_loader.dataset
 
-    # print(dataset[0]['audio'], dataset[0]['audio'].shape) 
-    # print('Cantidad de datos para testear:', len(test_loader.dataset))
+    # print(dataset[0]) 
+    # print('Cantidad de datos para entrenar:', len(train_loader.dataset))
 # --------------------------------------------------------------------------------------------------
     # Instantiate model
     model_name = 'facebook/wav2vec2-xls-r-300m'
@@ -59,12 +62,11 @@ def main():
     
     # model trainer
     trainer = L.Trainer(
-        max_epochs=20,
+        max_epochs=50,
         callbacks=[checkpoint_callback, early_stopping_callback],
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=1,
-        strategy='auto',
-        precision=16,
+        devices=2,
+        strategy='ddp_find_unused_parameters_true',
         accumulate_grad_batches=2,
         gradient_clip_val=0.5,
         sync_batchnorm=True,

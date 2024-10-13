@@ -201,11 +201,30 @@ class EafManager:
             )
         print(f'Segmenting done. Check at {output_dir}. Metadata at {output_json_file}')    
 
+
     def clean_string(self, input_string: str) -> str:
+        # Mapping of characters to replace
+        chars_to_replace = {
+            "á": "a",
+            "é": "e",
+            "í": "i",
+            "ó": "o",
+            "ú": "u",
+            "ü": "u"
+        }
+        
+        # Replace accented characters with their unaccented equivalents
+        for accented_char, unaccented_char in chars_to_replace.items():
+            input_string = input_string.replace(accented_char, unaccented_char)
+        
         # Add numbers to the regex
         chars_to_remove_regex = r'[\,\?\.\!\-\;\:\"\“\%\‘\”\�\' \n\[\]0-9]'
+        
         # Convert the string to lowercase
         cleaned_string = input_string.lower()
+        
         # Remove unwanted characters and numbers using regex
         cleaned_string = re.sub(chars_to_remove_regex, '', cleaned_string)
+        
         return cleaned_string
+

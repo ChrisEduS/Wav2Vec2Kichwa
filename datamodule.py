@@ -143,7 +143,7 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
         """Return DataLoader for the predict set."""
         return DataLoader(self.predict_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn)
 
-    def filter_json_by_duration(self, input_json_path, output_json_path, min_duration=1500, max_duration=6000):
+    def filter_json_by_duration(self, input_json_path, output_json_path, min_duration=1500, max_duration=5000):
         print('Filtrando datos por duracion (ms)')
         # Cargar el JSON desde el archivo
         with open(input_json_path, 'r') as infile:

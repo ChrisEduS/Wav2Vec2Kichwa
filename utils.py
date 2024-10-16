@@ -7,5 +7,5 @@ dirs = {
 configs = {
     'fs': 16000,
     'lr': 1e-4,
-    'batch_size': 16
+    'batch_size': 4
 }

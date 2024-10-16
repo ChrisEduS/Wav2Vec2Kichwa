@@ -44,13 +44,13 @@ def main():
     # Instantiate model
     model_name = 'facebook/wav2vec2-xls-r-300m'
     model = Wav2Vec2FineTuner(model_name=model_name,
-                              vocab_file='vocab.json',
+                              vocab_file=vocab,
                               fs=freq_sample,
                               batch_size=batch_size,
                               learning_rate=lr)
     
     # init wandb 
-    wandb.init(project='Wav2Vec2KichwaFineTuner')
+    wandb.init(project='Wav2Vec2KichwaFineTuner', resume='must', id='mf1nwc3h')
 
     # callbacks
     checkpoint_callback = L.pytorch.callbacks.ModelCheckpoint(dirpath=checkpoints_dir,
@@ -65,17 +65,16 @@ def main():
         max_epochs=50,
         callbacks=[checkpoint_callback, early_stopping_callback],
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=2,
+        devices=[2, 3],
         strategy='ddp_find_unused_parameters_true',
-        accumulate_grad_batches=2,
-        gradient_clip_val=0.5,
         sync_batchnorm=True,
         profiler="simple",  # Optional for debugging
         logger=WandbLogger(project='Wav2Vec2KichwaFineTuner')
     )
 
     trainer.fit(model=model,
-                datamodule=datamodule)
+                datamodule=datamodule,
+                ckpt_path='./checkpoints/last.ckpt')
     
     # EXAMPLE
     # Set model to evaluation mode

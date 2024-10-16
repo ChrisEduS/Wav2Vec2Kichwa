@@ -29,29 +29,29 @@ class EafManager:
             eaf_file = None
             audio_file = None
 
-            # Recorremos todos los archivos y directorios dentro del directorio actual
+            # Iter by all elements (files and directories) in the current directory
             for entry in os.listdir(current_dir):
                 full_path = os.path.join(current_dir, entry)
 
-                # Si es un directorio, entramos recursivamente
+                # If it's a directory, we explore it recursively
                 if os.path.isdir(full_path):
                     explore_directory(full_path)
 
-                # Si es un archivo, verificamos su extensión
+                # If it's a file, we check its extension
                 elif os.path.isfile(full_path):
                     if entry.endswith(transcription_ext):
                         eaf_file = full_path
                     elif entry.endswith(audio_ext):
                         audio_file = full_path
 
-                # Si encontramos ambos archivos, los registramos
+                # If we find a pair of files, we register them
                 if eaf_file and audio_file:
-                    # Usamos moviepy para conseguir la metadata del audio
+                    # Get metadata
                     audio_clip = AudioFileClip(audio_file)
-                    duration_ms = int(audio_clip.duration * 1000)  # Duración en milisegundos
-                    frequency_sampling = audio_clip.fps  # Frecuencia de muestreo
+                    duration_ms = int(audio_clip.duration * 1000)  # milliseconds
+                    frequency_sampling = audio_clip.fps  # frequency sampling
 
-                    # Registro base de datos
+                    # Save the metadata in a dictionary
                     record = {
                         'eaf_path': eaf_file,
                         'audio_path': audio_file,
@@ -59,17 +59,15 @@ class EafManager:
                         'FS': frequency_sampling
                     }
 
-                    # Añadimos el registro a la lista de resultados
                     result.append(record)
 
-                    # Reseteamos las variables para buscar nuevos pares
                     eaf_file = None
                     audio_file = None
 
-        # Comienza la búsqueda recursiva
+        # Start the recursive exploration
         explore_directory(data_dir)
 
-        # Guardamos el resultado en un archivo JSON
+        # Write the metadata to a JSON file
         with open(output_json_path, 'w') as f:
             json.dump(result, f, indent=4)
         print(f'Master metadata extracted. Check it at {output_json_path}')

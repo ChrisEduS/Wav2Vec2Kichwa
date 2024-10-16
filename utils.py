@@ -1,7 +1,7 @@
 dirs = {
         'data_dir': '/root/Wav2Vec2Kichwa/data',
         'processed_data_dir': '/root/Wav2Vec2Kichwa/segmented_data',
-        'vocab': 'vocab.json',
+        'vocab': '/root/Wav2Vec2Kichwa/vocab.json',
         'checkpoints': '/root/Wav2Vec2Kichwa/checkpoints'
     }
 configs = {

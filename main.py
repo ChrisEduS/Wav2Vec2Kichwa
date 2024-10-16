@@ -5,10 +5,9 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 from datamodule import DataModule_KichwaWav2vec2 
 from torchmodule import Wav2Vec2FineTuner
-from transformers import Wav2Vec2Config
 
 def main():
-    # Configuraciones básicas
+    # Directories and configs
     dirs = utils.dirs
     configs = utils.configs
 
@@ -28,18 +27,6 @@ def main():
                                             freq_sample=freq_sample,
                                             batch_size=batch_size)
 
-    #    # Preparar los datos (solo si no has procesado los datos antes)
-    # datamodule.prepare_data()
-    
-    # # Configurar el DataModule para el entrenamiento
-    # datamodule.setup(stage='fit')
-
-    # # Obtener el train_dataloader
-    # train_loader = datamodule.train_dataloader()
-    # dataset = train_loader.dataset
-
-    # print(dataset[0]) 
-    # print('Cantidad de datos para entrenar:', len(train_loader.dataset))
 # --------------------------------------------------------------------------------------------------
     # Instantiate model
     model_name = 'facebook/wav2vec2-xls-r-300m'
@@ -49,7 +36,7 @@ def main():
                               batch_size=batch_size,
                               learning_rate=lr)
     
-    # init wandb 
+    # init wandb. resume and id flags only for resume training
     wandb.init(project='Wav2Vec2KichwaFineTuner', resume='must', id='mf1nwc3h')
 
     # callbacks
@@ -71,38 +58,10 @@ def main():
         profiler="simple",  # Optional for debugging
         logger=WandbLogger(project='Wav2Vec2KichwaFineTuner')
     )
-
+    # fit model
     trainer.fit(model=model,
                 datamodule=datamodule,
-                ckpt_path='./checkpoints/last.ckpt')
-    
-    # EXAMPLE
-    # Set model to evaluation mode
-    # model.eval()
-
-    # # Get a sample from the test dataset
-    # sample = datamodule.test_dataloader().dataset[0]  # First sample from test dataset
-    # audio = sample['audio']
-    # transcription = sample['transcription']
-
-    # # Print the ground truth transcription
-    # print(f"Ground Truth: {transcription}")
-
-    # # Preprocess the audio input for the model
-    # inputs = model.processor(audio, sampling_rate=sample['fs'], return_tensors="pt", padding=True)
-    # input_values = inputs.input_values.squeeze(1).to(model.device)
-    # attention_mask = inputs.attention_mask.to(model.device)
-
-    # # Forward pass through the model
-    # with torch.no_grad():
-    #     logits = model(input_values, attention_mask=attention_mask)
-
-    # # Decode the predicted token IDs into text
-    # pred_ids = torch.argmax(logits, dim=-1)
-    # predicted_transcription = model.processor.batch_decode(pred_ids)
-
-    # # Print predicted transcription
-    # print(f"Predicted Transcription: {predicted_transcription[0]}")
+                ckpt_path='./checkpoints/last.ckpt') # just if you want to resume training
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 /data
 /segmented_data
-__pychache__/
+/__pycache__
 /checkpoints
 /wandb
+/prep_files/__pycache__

@@ -63,6 +63,7 @@ class KichwaAudioDataset(Dataset):
             'transcription': transcription, # transcription text
             'duration': duration,           # Duration in milliseconds (int)
             'fs': self.model_sample_rate,   # Sample rate. Wav2Vec2 model trained with 16000 frequency rate
+            'audio_path': audio_path,       # path for audio file
             'eaf_path': eaf_path            # path for eaf file. Maybe not used. 
         }
 

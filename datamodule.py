@@ -94,6 +94,7 @@ def collate_fn(batch):
     labels = labels.masked_fill(labels == processor.tokenizer.pad_token_id, -100)
 
     # Keep additional data
+    audio_paths = [sample['audio_path'] for sample in batch]
     eaf_paths = [sample['eaf_path'] for sample in batch]
     durations = [sample['duration'] for sample in batch]
     fs = [sample['fs'] for sample in batch]
@@ -104,7 +105,8 @@ def collate_fn(batch):
         'labels': labels,                   # Processed transcriptions. mapped to vocab
         'audio': audio,                     # Original audios
         'transcription': transcription,     # Original transcriptions
-        'eaf_path': eaf_paths,              # Additional paths
         'duration': durations,              # Audio durations
-        'fs': fs                            # Sampling rates
+        'fs': fs,                           # Sampling rates
+        'audio_path': audio_paths,          # Audio paths
+        'eaf_path': eaf_paths,              # eaf file paths
     }

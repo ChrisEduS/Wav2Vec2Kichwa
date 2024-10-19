@@ -5,6 +5,61 @@ import lightning as L
 from torchmodule import Wav2Vec2FineTuner
 from datamodule import DataModule_KichwaWav2vec2
 import numpy as np
+import wandb
+
+def upload_predictions_to_wandb(model, test_loader, device, project_name, sample_rate=16000, num_samples=4):
+    # Initialize W&B run
+    run = wandb.init(project=project_name, job_type="evaluation")
+    
+    # Create a W&B table with columns for audio, predicted transcription, and ground truth transcription
+    columns = ["audio", "predicted_transcription", "ground_truth"]
+    table = wandb.Table(columns=columns)
+
+    # Ensure the model is in eval mode and disable gradient calculations
+    model.eval()
+    all_predictions = []
+    all_transcriptions = []
+    all_audio_paths = []
+
+    with torch.no_grad():
+        for batch in test_loader:
+            # Move inputs to the device
+            input_values = batch['input_values'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+            transcription = batch['transcription']
+            audio_path = batch['audio_path']
+
+            # Generate predictions
+            outputs = model(inputs=input_values, attention_mask=attention_mask, targets=labels).logits
+            pred_ids = torch.argmax(outputs, dim=-1)
+            predicted_transcriptions = model.processor.batch_decode(pred_ids)
+
+            # Add predictions and ground truth to respective lists
+            all_predictions.extend(predicted_transcriptions)
+            all_transcriptions.extend(transcription)
+            all_audio_paths.extend(audio_path)
+
+    # Pick random samples to add to the W&B table
+    random_indices = np.random.choice(len(all_predictions), num_samples, replace=False)
+    
+    for idx in random_indices:
+        audio_file = all_audio_paths[idx]
+        predicted_transcription = all_predictions[idx]
+        ground_truth_transcription = all_transcriptions[idx]
+
+        # Add audio, predicted transcription, and ground truth to the W&B table
+        table.add_data(
+            wandb.Audio(audio_file, sample_rate=sample_rate, caption=f"Sample {idx + 1}"), 
+            predicted_transcription, 
+            ground_truth_transcription
+        )
+
+    # Log the table to W&B
+    run.log({"Test-table": table})
+
+    # Finish the W&B run
+    run.finish()
 
 # Configuración de directorios y parámetros
 dirs = utils.dirs
@@ -20,7 +75,7 @@ batch_size = configs['batch_size']
 lr = configs['lr']
 
 # Definir dispositivo (usa 'cuda' si tienes una GPU disponible)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
 # Best model path
 best_model = 'epoch=30-val_loss=0.02-val_wer=0.07-val_cer=0.01.ckpt'
 # Cargar el modelo desde el checkpoint
@@ -50,40 +105,8 @@ datamodule.setup(stage='test')
 # Obtener el DataLoader de prueba
 test_loader = datamodule.test_dataloader()
 
-# Poner el modelo en modo de evaluación
-model.eval()
+# Project name
+project_name = "Wav2Vec2KichwaFineTuner"
 
-# Desactivar el cálculo de gradientes
-all_predictions = []
-all_transcriptions = []
-all_eaf_paths = []
-with torch.no_grad():
-    for batch in test_loader:
-        # Mover los inputs al mismo dispositivo que el modelo
-        input_values = batch['input_values'].to(device)
-        attention_mask = batch['attention_mask'].to(device)
-        labels = batch['labels'].to(device)
-        transcription = batch['transcription']
-        eaf_path = batch['eaf_path']
-
-        # Hacer predicciones con el modelo
-        outputs = model(inputs=input_values, attention_mask=attention_mask, targets=labels).logits
-        # append outputs and transcriptions and eaf paths
-        all_predictions.append(outputs)
-        all_transcriptions.append(transcription)
-        all_eaf_paths.append(eaf_path)
-
-# random batch
-random_idx = np.random.randint(len(all_predictions))
-# get the predicted transcription
-predictions_batch = all_predictions[random_idx]
-pred_ids = torch.argmax(predictions_batch, dim=-1)
-predicted_transcription = model.processor.batch_decode(pred_ids)
-# get the true transcription
-transcription_batch = all_transcriptions[random_idx]
-# get the eaf path
-eaf_path = all_eaf_paths[random_idx]
-
-print(predicted_transcription)
-print(transcription_batch)
-print(eaf_path)
+# Example usage
+upload_predictions_to_wandb(model, test_loader, device, project_name)

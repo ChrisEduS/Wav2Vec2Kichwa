@@ -4,3 +4,5 @@
 /checkpoints
 /wandb
 /prep_files/__pycache__
+/best_models
+nohup.out

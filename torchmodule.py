@@ -1,7 +1,7 @@
 import lightning as L
 import torch
 from transformers import Wav2Vec2ForCTC, Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor, Wav2Vec2Processor
-from jiwer import wer, cer
+from jiwer import wer, cer, mer
 
 class Wav2Vec2FineTuner(L.LightningModule):
     def __init__(self, model_name: str, vocab_file: str, fs: int, batch_size: int, learning_rate: int):
@@ -15,6 +15,7 @@ class Wav2Vec2FineTuner(L.LightningModule):
         self.model = Wav2Vec2ForCTC.from_pretrained(model_name,
                                      vocab_size=len(self.processor.tokenizer),
                                      ctc_loss_reduction="mean",
+                                     apply_spec_augment=False, # No data augmentation
                                      pad_token_id=self.processor.tokenizer.pad_token_id,
                                      bos_token_id=self.processor.tokenizer.bos_token_id,
                                      eos_token_id=self.processor.tokenizer.eos_token_id
@@ -46,46 +47,32 @@ class Wav2Vec2FineTuner(L.LightningModule):
         logits = outputs.logits
         loss = outputs.loss
 
-        # # Use model.config.inputs_to_logits_ratio to calculate input_lengths
-        # downsampling_factor = self.model.config.inputs_to_logits_ratio
-        # input_lengths = torch.clamp(attention_mask.sum(-1) // downsampling_factor, max=logits.size(1)).long().to(self.device)
-        # # Target lengths
-        # target_lengths = torch.tensor([len(t) for t in targets], device=self.device)
-
-        # # Compute CTC loss
-        # loss = torch.nn.functional.ctc_loss(
-        #     logits.transpose(0, 1),  # (T, N, C) format required for CTC
-        #     targets,
-        #     input_lengths=input_lengths,
-        #     target_lengths=target_lengths,
-        #     blank=self.processor.tokenizer.pad_token_id,
-        #     zero_infinity=True,
-        # )
-
         # Decode predictions and compute metrics
         pred_ids = torch.argmax(logits, dim=-1)
         pred_transcriptions = self.processor.batch_decode(pred_ids)
 
-        # print(pred_transcriptions, transcriptions)
-
+        # Compute WER, CER, and MER
         avg_wer = wer(transcriptions, pred_transcriptions)
         avg_cer = cer(transcriptions, pred_transcriptions)
+        avg_mer = mer(transcriptions, pred_transcriptions)
 
-        return loss, avg_wer, avg_cer
+        return loss, avg_wer, avg_cer, avg_mer
 
     
     def training_step(self, batch, batch_idx):
-        loss, avg_wer, avg_cer = self._shared_step(batch)
+        loss, avg_wer, avg_cer, avg_mer = self._shared_step(batch)
         self.log("train_loss", loss, **self.log_args)
         self.log("train_wer", avg_wer, **self.log_args)
         self.log("train_cer", avg_cer, **self.log_args)
+        self.log("train_mer", avg_mer, **self.log_args)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, avg_wer, avg_cer = self._shared_step(batch)
+        loss, avg_wer, avg_cer, avg_mer = self._shared_step(batch)
         self.log("val_loss", loss, **self.log_args)
         self.log("val_wer", avg_wer, **self.log_args)
         self.log("val_cer", avg_cer, **self.log_args)
+        self.log("val_mer", avg_mer, **self.log_args)
         return loss
 
     def configure_optimizers(self):

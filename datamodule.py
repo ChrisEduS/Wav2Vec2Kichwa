@@ -1,6 +1,5 @@
 import os
-import torch
-import json
+import utils
 import lightning as L
 from torch.utils.data import random_split, DataLoader
 from dataset import KichwaAudioDataset 
@@ -53,22 +52,23 @@ class DataModule_KichwaWav2vec2(L.LightningDataModule):
 
     def train_dataloader(self):
         """Return DataLoader for the training set."""
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0, collate_fn=collate_fn)
 
     def val_dataloader(self):
         """Return DataLoader for the validation set."""
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn)
+        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
     def test_dataloader(self):
         """Return DataLoader for the test set."""
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
     def predict_dataloader(self):
         """Return DataLoader for the predict set."""
-        return DataLoader(self.predict_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn)
+        return DataLoader(self.predict_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
 def collate_fn(batch):
-    vocab_file = 'vocab.json'
+    dirs = utils.dirs
+    vocab_file = dirs['vocab']
     tokenizer = Wav2Vec2CTCTokenizer(vocab_file, unk_token='[UNK]', pad_token='[PAD]', word_delimiter_token='|')
     feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0, do_normalize=True, return_attention_mask=True)
     processor = Wav2Vec2Processor(feature_extractor, tokenizer)

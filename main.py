@@ -37,12 +37,12 @@ def main():
                               learning_rate=lr)
     
     # init wandb. resume and id flags only for resume training
-    wandb.init(project='Wav2Vec2KichwaFineTuner', resume='must', id='mf1nwc3h')
+    wandb.init(project='Wav2Vec2KichwaFineTuner') # , resume='must', id='fadfhscx'
 
     # callbacks
     checkpoint_callback = L.pytorch.callbacks.ModelCheckpoint(dirpath=checkpoints_dir,
-                                                              filename='{epoch}-{val_loss:.2f}-{val_wer:.2f}-{val_cer:.2f}',
-                                                              save_top_k=5,
+                                                              filename='{epoch}-{val_loss:.3f}-{val_wer:.3f}-{val_cer:.3f}-{val_mer:.3f}',
+                                                              save_top_k=1,
                                                               save_last=True, monitor="val_loss", mode='min')
     early_stopping_callback = L.pytorch.callbacks.EarlyStopping(monitor="val_loss", patience=5, mode="min")
 
@@ -52,7 +52,7 @@ def main():
         max_epochs=50,
         callbacks=[checkpoint_callback, early_stopping_callback],
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=[2, 3],
+        devices=[1, 2, 3],
         strategy='ddp_find_unused_parameters_true',
         sync_batchnorm=True,
         profiler="simple",  # Optional for debugging
@@ -60,8 +60,8 @@ def main():
     )
     # fit model
     trainer.fit(model=model,
-                datamodule=datamodule,
-                ckpt_path='./checkpoints/last.ckpt') # just if you want to resume training
+                datamodule=datamodule) # ckpt_path='./checkpoints/last.ckpt' just if you want to resume training
+    print('Best model saved at: ', checkpoint_callback.best_model_path)
 
 
 if __name__ == "__main__":

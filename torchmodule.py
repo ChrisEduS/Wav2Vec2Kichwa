@@ -15,7 +15,7 @@ class Wav2Vec2FineTuner(L.LightningModule):
         self.model = Wav2Vec2ForCTC.from_pretrained(model_name,
                                      vocab_size=len(self.processor.tokenizer),
                                      ctc_loss_reduction="mean",
-                                     apply_spec_augment=False, # No data augmentation
+                                     apply_spec_augment=False, # data augmentation
                                      pad_token_id=self.processor.tokenizer.pad_token_id,
                                      bos_token_id=self.processor.tokenizer.bos_token_id,
                                      eos_token_id=self.processor.tokenizer.eos_token_id
@@ -74,6 +74,14 @@ class Wav2Vec2FineTuner(L.LightningModule):
         self.log("val_cer", avg_cer, **self.log_args)
         self.log("val_mer", avg_mer, **self.log_args)
         return loss
+
+    def test_step(self, batch, batch_idx):
+        loss, avg_wer, avg_cer, avg_mer = self._shared_step(batch)
+        self.log("test_loss", loss, **self.log_args)
+        self.log("test_wer", avg_wer, **self.log_args)
+        self.log("test_cer", avg_cer, **self.log_args)
+        self.log("test_mer", avg_mer, **self.log_args)
+        return {"wer": avg_wer, "cer": avg_cer, "mer": avg_mer}
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)

@@ -6,7 +6,7 @@ from pytorch_lightning.loggers import WandbLogger
 from datamodule import DataModule_KichwaWav2vec2 
 from torchmodule import Wav2Vec2FineTuner
 
-def main():
+def main(stage: str = 'train'):
     # Directories and configs
     dirs = utils.dirs
     configs = utils.configs
@@ -44,7 +44,7 @@ def main():
                                                               filename='{epoch}-{val_loss:.3f}-{val_wer:.3f}-{val_cer:.3f}-{val_mer:.3f}',
                                                               save_top_k=1,
                                                               save_last=True, monitor="val_loss", mode='min')
-    early_stopping_callback = L.pytorch.callbacks.EarlyStopping(monitor="val_loss", patience=5, mode="min")
+    early_stopping_callback = L.pytorch.callbacks.EarlyStopping(monitor="val_loss", patience=8, mode="min")
 
     
     # model trainer

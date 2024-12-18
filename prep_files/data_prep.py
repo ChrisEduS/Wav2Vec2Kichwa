@@ -69,11 +69,13 @@ def prepare_data(data_dir, pdata_dir, vocab):
     )
 
     # FILTERING 
-    # excluding data with duration outside 3000ms and 7000ms
+    # excluding data with duration outside 4000ms and 8000ms
     ptest_json = os.path.join(pdata_dir, 'test.json')
     ftest_json = os.path.join(pdata_dir, 'final_test.json')
     filter_json_by_duration(input_json_path=ptest_json, 
-                                output_json_path=ftest_json)
+                                output_json_path=ftest_json,
+                                min_duration=4000,
+                                max_duration=8000)
     
     # FINAL STEP --------------------------------------------------
     # CREATE VOCABULARY

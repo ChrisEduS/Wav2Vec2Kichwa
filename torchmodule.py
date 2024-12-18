@@ -76,12 +76,39 @@ class Wav2Vec2FineTuner(L.LightningModule):
         return loss
 
     def test_step(self, batch, batch_idx):
-        loss, avg_wer, avg_cer, avg_mer = self._shared_step(batch)
-        self.log("test_loss", loss, **self.log_args)
+        # Concatenate input_values along the time axis
+        concatenated_input_values = torch.cat(batch['input_values'].unbind(dim=0), dim=-1).unsqueeze(0)  # Shape: [1, total_length]
+
+        # Concatenate attention_mask along the time axis
+        concatenated_attention_mask = torch.cat(batch['attention_mask'].unbind(dim=0), dim=-1).unsqueeze(0)  # Shape: [1, total_length]
+
+        # Concatenate transcriptions into a single string
+        concatenated_transcriptions = " ".join(batch['transcription'])  # Combine all transcriptions with spaces
+
+        # Forward pass with concatenated inputs
+        outputs = self.forward(concatenated_input_values, concatenated_attention_mask, None)
+        logits = outputs.logits
+
+        # Decode predictions
+        pred_ids = torch.argmax(logits, dim=-1)
+        pred_transcriptions = self.processor.batch_decode(pred_ids)
+
+        # Compute MER, WER, CER on concatenated results
+        avg_mer = mer(concatenated_transcriptions, pred_transcriptions)
+        avg_wer = wer(concatenated_transcriptions, pred_transcriptions)
+        avg_cer = cer(concatenated_transcriptions, pred_transcriptions)
+
+        # Log results
+        self.log("test_mer", avg_mer, **self.log_args)
         self.log("test_wer", avg_wer, **self.log_args)
         self.log("test_cer", avg_cer, **self.log_args)
-        self.log("test_mer", avg_mer, **self.log_args)
-        return {"wer": avg_wer, "cer": avg_cer, "mer": avg_mer}
+
+        return {
+            "mer": avg_mer,
+            "wer": avg_wer,
+            "cer": avg_cer,
+        }
+
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)

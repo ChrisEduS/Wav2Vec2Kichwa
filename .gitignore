@@ -5,4 +5,5 @@
 /wandb
 /prep_files/__pycache__
 /best_models
+/lightning_logs
 nohup.out

@@ -31,3 +31,7 @@ Lo único que se puede alterar en este archivo es la función `filter_json_by_du
 
 ## Experimentaciones
 
+Para el modelo se usó Wandb Logger, por lo que primero se debe iniciar sesión con una cuenta de wandb; y luego cambiar el destino de los logs de acuerdo al repositorio que usted ha creado. 
+
+Para realizar experimentos se debe ejecutar (en caso de tener el módulo ``nohup`` instalado en linux) es ``nohup python3 main.py &``, de esta forma se podrá ejecutar el experimento en segundo plano. Para ver los logs en la terminal se puede imprimir el archivo ``nohup.out`` usando ``cat nohup.out``. 
+

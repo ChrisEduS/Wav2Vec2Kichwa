@@ -48,7 +48,9 @@ def prepare_data(data_dir, pdata_dir, vocab):
     ptrain_json = os.path.join(pdata_dir, 'train.json')
     ftrain_json = os.path.join(pdata_dir, 'final_train.json')
     filter_json_by_duration(input_json_path=ptrain_json, 
-                                output_json_path=ftrain_json)
+                                output_json_path=ftrain_json,
+                                min_duration=4000,
+                                max_duration=8000)
 
     # TESTING DATA -------------------------
     # extracting metadata of master files

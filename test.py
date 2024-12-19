@@ -21,7 +21,7 @@ lr = configs['lr']
 # Definir dispositivo (usa 'cuda' si tienes una GPU disponible)
 # device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
 # Best model path
-best_model = '/root/Wav2Vec2Kichwa/best_models/no-data-augmentation/electric-fire-179/epoch=42-val_loss=0.014-val_wer=0.029-val_cer=0.004-val_mer=0.029.ckpt'
+best_model = ''
 model_name = 'facebook/wav2vec2-xls-r-300m'
 # Cargar el modelo desde el checkpoint
 model = Wav2Vec2FineTuner.load_from_checkpoint(checkpoint_path=best_model,
